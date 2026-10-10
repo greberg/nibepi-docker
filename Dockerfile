@@ -35,10 +35,7 @@ LABEL org.opencontainers.image.title="nibepi-gateway" \
       org.opencontainers.image.url="https://github.com/greberg/nibepi-docker" \
       org.opencontainers.image.licenses="MIT"
 
-# NIBEPI_DOCKER=1: config writes go straight to disk instead of bracketing
-# themselves with sudo mount remount,rw (bare-Pi read-only SD card).
 ENV NODE_ENV=production \
-    NIBEPI_DOCKER=1 \
     NIBEPI_CONFIG_DIR=/etc/nibepi \
     NIBEPI_HEALTH_FILE=/dev/shm/nibepi-health.json
 
