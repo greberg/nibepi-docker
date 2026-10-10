@@ -219,7 +219,10 @@ if [ -f "$compose_file" ]; then
   say "Using your $compose_file (not changed)"
   active="$compose_file"; writing=false
 else
-  cp "$template" "$new_compose"; chmod 600 "$new_compose"
+  # It gets the MQTT password: private from the start (the edits below
+  # replace the file).
+  old_umask="$(umask)"; umask 077
+  cp "$template" "$new_compose"
   for key in "${SETTING_KEYS[@]}"; do
     if [ -n "${!key+x}" ]; then compose_set "$new_compose" "$key" "${!key}"
     elif $legacy && [ -n "$(env_get "$env_file" "$key")" ]; then
@@ -243,6 +246,7 @@ else
   if [ -n "$dialout_gid" ] && [ "$dialout_gid" != 20 ]; then
     sed -i "s|^      - dialout\$|      - \"$dialout_gid\"   # the host's dialout|" "$new_compose"
   fi
+  umask "$old_umask"; chmod 600 "$new_compose"
   active="$new_compose"; writing=true
 fi
 
@@ -301,7 +305,7 @@ fi
 if ! $writing; then
   if [ -f "$compose_file.example" ] && ! cmp -s "$template" "$compose_file.example"; then
     say "The upstream docker-compose.yml has changed since the last run:"
-    diff -u "$compose_file.example" "$template" | sed 's/^/    /' || true
+    diff -u -L "last run" -L "now" "$compose_file.example" "$template" | sed 's/^/    /' || true
     echo "    Merge what you want into $compose_file (the new template is $compose_file.example)."
   elif [ ! -f "$compose_file.example" ] && ! diff -q <(grep -v '^ *#' "$template") <(grep -v '^ *#' "$compose_file") >/dev/null; then
     echo "    the current template is in $compose_file.example (compare: diff $compose_file.example $compose_file)"
