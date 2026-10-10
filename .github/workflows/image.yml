@@ -1,27 +1,30 @@
-# Builds the image from this repo plus the code repositories, and publishes it
-# to GHCR as ghcr.io/<owner>/nibepi-nodered for amd64 and arm64 (Raspberry Pi
-# with a 64-bit OS), so the Pi can pull instead of building.
+# Builds the gateway image from this repo plus nibepi-backend, and publishes
+# it to GHCR as ghcr.io/<owner>/nibepi-gateway for amd64 and arm64 (Raspberry
+# Pi with a 64-bit OS), so the Pi can pull instead of building.
 #
-# The code repositories are checked out from the same owner as this repo, on
+# nibepi-backend is checked out from the same owner as this repo, on
 # CODE_REF. A change pushed there is picked up by the nightly run, or start
 # one by hand under Actions -> image -> Run workflow.
+#
+# The Node-RED image this replaced, ghcr.io/<owner>/nibepi-nodered, is no
+# longer built; its last tags stay in GHCR as an archive (see the
+# nodered-final tag of this repo).
 name: image
 
 on:
   push:
-    branches: [master, improvements]
-  pull_request:
+    branches: [improvements]
   schedule:
     - cron: '30 2 * * *'
   workflow_dispatch:
     inputs:
       code_ref:
-        description: Branch of nibepi-backend and node-red-contrib-nibepi to build
+        description: Branch of nibepi-backend to build
         default: improvements
 
 env:
   CODE_REF: ${{ inputs.code_ref || 'improvements' }}
-  IMAGE: ghcr.io/${{ github.repository_owner }}/nibepi-nodered
+  IMAGE: ghcr.io/${{ github.repository_owner }}/nibepi-gateway
 
 permissions:
   contents: read
@@ -33,19 +36,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # As nibepi/, the sibling checkout the Dockerfile's backend stage copies.
       - name: Check out nibepi-backend
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/nibepi-backend
           ref: ${{ env.CODE_REF }}
           path: nibepi
-
-      - name: Check out node-red-contrib-nibepi
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/node-red-contrib-nibepi
-          ref: ${{ env.CODE_REF }}
-          path: node-red-contrib-nibepi
 
       # YYYYMMDD and sha-<short> stay put when the nightly run moves :latest,
       # so pi/install.sh can pin either with NIBEPI_TAG.
@@ -54,28 +51,30 @@ jobs:
         run: |
           echo "tag=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
           echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "backend=$(git -C nibepi rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push unless this is a pull request)
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ steps.date.outputs.tag }}
-            ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:${{ steps.date.outputs.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            nibepi.backend.revision=${{ steps.date.outputs.backend }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
