@@ -1,0 +1,26 @@
+# Same container as the docker run command in README.md, as a compose file.
+# A rebuild is picked up with:  docker compose up -d --force-recreate
+# (no "container name already in use" - compose replaces it).
+services:
+  nibepi:
+    image: ${NIBEPI_IMAGE:-nibepi-nodered}
+    build: .
+    container_name: nibepi
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      - TZ=${TZ:-Europe/Stockholm}
+    volumes:
+      - ${NIBEPI_ROOT:-/opt/nibepi}/data/nibepi-flow:/data
+      - ${NIBEPI_ROOT:-/opt/nibepi}/etc/nibepi:/etc/nibepi
+      - ${NIBEPI_ROOT:-/opt/nibepi}/tmp:/tmp
+    ports:
+      - "1880:1880"
+      - "9999:9999/udp"
+    # For an RS485 HAT on the host's serial port instead of a NibeGW gateway,
+    # pass the port through and let node-red open it (dialout's gid, usually 20):
+    # devices:
+    #   - /dev/ttyAMA0:/dev/ttyAMA0
+    # group_add:
+    #   - "20"

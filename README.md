@@ -56,6 +56,17 @@ rebuild. Replace the container with:
 docker stop nibepi && docker rm nibepi
 ```
 
+Or use the included `docker-compose.yml`, which takes the same paths from
+`NIBEPI_ROOT` (default `/opt/nibepi`) and replaces the container itself:
+
+```sh
+docker compose up -d --build              # build and start
+docker compose up -d --force-recreate     # pick up a rebuilt image
+```
+
+For an RS485 HAT instead of a NibeGW gateway, uncomment `devices` and
+`group_add` in the compose file.
+
 | mount | holds |
 |---|---|
 | `/data` | Node-RED's own directory: `flows.json`, `settings.js`, installed nodes. A clone of nibepi-flow. |
