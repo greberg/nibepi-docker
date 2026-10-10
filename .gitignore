@@ -1,6 +1,7 @@
 # nibepi-backend is checked out here as nibepi/ and built into the image.
 # It keeps its own history and doesn't belong to this repo.
 /nibepi/
-# docker compose's local settings (MQTT credentials) and the config volume.
+# A filled-in compose setup's secrets (.env from older setups) and the
+# config volume, for running docker-compose.yml from a checkout.
 .env
 /config/

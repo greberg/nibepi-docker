@@ -45,7 +45,7 @@ jobs:
           path: nibepi
 
       # YYYYMMDD and sha-<short> stay put when the nightly run moves :latest,
-      # so pi/install.sh can pin either with NIBEPI_TAG.
+      # so a docker-compose.yml can pin either (image: ...:20261010).
       - name: Date and commit tags
         id: date
         run: |
