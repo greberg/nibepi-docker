@@ -47,6 +47,10 @@ jobs:
           ref: ${{ env.CODE_REF }}
           path: node-red-contrib-nibepi
 
+      - name: Date tag
+        id: date
+        run: echo "tag=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
@@ -66,6 +70,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.date.outputs.tag }}
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -92,6 +92,24 @@ with a read-only SD card and brackets every config write in
 `sudo mount -o remount,rw /`, which fails inside a container and loses the write
 silently. Bare-Pi installs leave the variable unset.
 
+## Raspberry Pi: one-command install
+
+On a Raspberry Pi with a 64-bit OS and Docker:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/greberg/nibepi-docker/improvements/pi/install.sh | bash
+```
+
+It pulls the prebuilt image (nothing is built on the Pi), creates
+`~/nibepi/{data,etc,tmp}`, fetches the flows if they aren't there, passes the
+RS485 serial port through (`/dev/ttyAMA0`, or `NIBEPI_SERIAL=none` for a NibeGW
+gateway), sets a Node-RED credential secret, and starts the container.
+Re-run it to upgrade; data is never overwritten. An existing `nibepi`
+container from another setup is only replaced with `REPLACE=1`.
+
+To roll back, set `NIBEPI_IMAGE=ghcr.io/greberg/nibepi-nodered:<YYYYMMDD>` in
+`~/nibepi/.env` and run `docker compose up -d` there.
+
 ## Prebuilt image
 
 `.github/workflows/image.yml` builds the image for amd64 and arm64 and
