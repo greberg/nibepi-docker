@@ -11,18 +11,25 @@
 #   NIBEPI_SERIAL  RS485 serial device, or "none" for a NibeGW gateway
 #                                                 default /dev/ttyAMA0 if present, else none
 #   FLOW_REPO      flows to start from            default https://github.com/greberg/nibepi-flow.git
+#   FLOW_BRANCH    branch of FLOW_REPO            default improvements
 #   REPLACE=1      remove an existing "nibepi" container started some other way
+#
+# Everything runs from main(), called on the last line, so a download cut off
+# halfway through (curl | bash) is a syntax error that runs nothing rather
+# than half an install.
 set -euo pipefail
-
-NIBEPI_ROOT="${NIBEPI_ROOT:-$HOME/nibepi}"
-NIBEPI_IMAGE="${NIBEPI_IMAGE:-ghcr.io/greberg/nibepi-nodered:latest}"
-FLOW_REPO="${FLOW_REPO:-https://github.com/greberg/nibepi-flow.git}"
-if [ -z "${NIBEPI_SERIAL:-}" ]; then
-  if [ -e /dev/ttyAMA0 ]; then NIBEPI_SERIAL=/dev/ttyAMA0; else NIBEPI_SERIAL=none; fi
-fi
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+main() {
+NIBEPI_ROOT="${NIBEPI_ROOT:-$HOME/nibepi}"
+NIBEPI_IMAGE="${NIBEPI_IMAGE:-ghcr.io/greberg/nibepi-nodered:latest}"
+FLOW_REPO="${FLOW_REPO:-https://github.com/greberg/nibepi-flow.git}"
+FLOW_BRANCH="${FLOW_BRANCH:-improvements}"
+if [ -z "${NIBEPI_SERIAL:-}" ]; then
+  if [ -e /dev/ttyAMA0 ]; then NIBEPI_SERIAL=/dev/ttyAMA0; else NIBEPI_SERIAL=none; fi
+fi
 
 # --- prerequisites ---------------------------------------------------------
 command -v docker >/dev/null || die "Docker is not installed. Install it with:
@@ -53,14 +60,19 @@ fi
 say "Data in $NIBEPI_ROOT"
 mkdir -p "$NIBEPI_ROOT/etc/nibepi" "$NIBEPI_ROOT/tmp" "$NIBEPI_ROOT/data"
 if [ ! -d "$NIBEPI_ROOT/data/nibepi-flow" ]; then
-  say "Fetching flows from $FLOW_REPO"
-  git clone --quiet "$FLOW_REPO" "$NIBEPI_ROOT/data/nibepi-flow"
+  say "Fetching flows from $FLOW_REPO ($FLOW_BRANCH)"
+  git clone --quiet -b "$FLOW_BRANCH" "$FLOW_REPO" "$NIBEPI_ROOT/data/nibepi-flow"
 else
   echo "    flows already present, left as they are"
 fi
-# The container runs as node-red (uid 1000).
-sudo chown -R 1000:1000 "$NIBEPI_ROOT/etc/nibepi" "$NIBEPI_ROOT/tmp" "$NIBEPI_ROOT/data/nibepi-flow" 2>/dev/null \
-  || chown -R 1000:1000 "$NIBEPI_ROOT/etc/nibepi" "$NIBEPI_ROOT/tmp" "$NIBEPI_ROOT/data/nibepi-flow" 2>/dev/null || true
+# The container runs as node-red (uid 1000); if it can't write here, Node-RED
+# and the nibepi core fail in ways that are hard to trace back to this.
+owned=("$NIBEPI_ROOT/etc/nibepi" "$NIBEPI_ROOT/tmp" "$NIBEPI_ROOT/data/nibepi-flow")
+chown_cmd=(sudo chown); if [ "$(id -u)" -eq 0 ]; then chown_cmd=(chown); fi
+"${chown_cmd[@]}" -R 1000:1000 "${owned[@]}" \
+  || die "Couldn't hand ${owned[*]} to uid 1000 (node-red in the container). Fix it with:
+  sudo chown -R 1000:1000 ${owned[*]}
+and re-run this installer."
 
 # --- .env ---------------------------------------------------------------------
 env_file="$NIBEPI_ROOT/.env"
@@ -137,3 +149,6 @@ ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 say "NibePi is running: http://${ip:-<pi-address>}:1880  (dashboard: /ui)"
 echo "    logs:    cd $NIBEPI_ROOT && docker compose logs -f"
 echo "    upgrade: re-run this installer"
+}
+
+main "$@"
