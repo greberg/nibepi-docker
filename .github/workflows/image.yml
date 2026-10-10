@@ -47,9 +47,13 @@ jobs:
           ref: ${{ env.CODE_REF }}
           path: node-red-contrib-nibepi
 
-      - name: Date tag
+      # YYYYMMDD and sha-<short> stay put when the nightly run moves :latest,
+      # so pi/install.sh can pin either with NIBEPI_TAG.
+      - name: Date and commit tags
         id: date
-        run: echo "tag=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "tag=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -72,5 +76,6 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ steps.date.outputs.tag }}
             ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:${{ steps.date.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
