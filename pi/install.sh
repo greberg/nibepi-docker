@@ -5,9 +5,15 @@
 #   curl -fsSL https://raw.githubusercontent.com/greberg/nibepi-docker/improvements/pi/install.sh | bash
 #
 # Re-running it upgrades: pulls the newest image and recreates the container.
-# Data is never overwritten. Settings (override with environment variables):
+# Data is never overwritten. The image that was running is kept as
+# ghcr.io/greberg/nibepi-nodered:previous; afterwards the installer waits for
+# the container to report healthy and says how to roll back if it doesn't.
+# Settings (override with environment variables):
 #   NIBEPI_ROOT    where data lives               default ~/nibepi
-#   NIBEPI_IMAGE   image to run                   default ghcr.io/greberg/nibepi-nodered:latest
+#   NIBEPI_TAG     image tag: latest, a build date (20261010) or previous
+#                                                 default latest
+#   NIBEPI_IMAGE   image to run (overrides NIBEPI_TAG)
+#                                                 default ghcr.io/greberg/nibepi-nodered:$NIBEPI_TAG
 #   NIBEPI_SERIAL  RS485 serial device on the host, or "none" for a NibeGW
 #                  gateway; it is /dev/ttyAMA0 inside the container
 #                                                 default /dev/serial0 if present, else none
@@ -24,9 +30,48 @@ say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+INSTALL_URL=https://raw.githubusercontent.com/greberg/nibepi-docker/improvements/pi/install.sh
+IMAGE_REPO=ghcr.io/greberg/nibepi-nodered
+PREVIOUS_IMAGE="$IMAGE_REPO:previous"
+
+container_state() {  # running/exited + health: healthy, unhealthy, starting or none
+  docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' nibepi 2>/dev/null \
+    || echo "missing none"
+}
+
+# Waits up to ~6 minutes (the healthcheck's start period is 5) and leaves
+# the outcome in $health: healthy, unhealthy, exited, starting (still
+# undecided) or none (the image has no healthcheck).
+wait_healthy() {
+  local state status
+  printf '    waiting for the healthcheck'
+  for _ in $(seq 1 36); do
+    read -r state status <<<"$(container_state)"
+    if [ "$state" != running ]; then health=exited; break; fi
+    health=$status
+    case "$health" in healthy|unhealthy|none) break ;; esac
+    printf '.'; sleep 10
+  done
+  printf ' %s\n' "$health"
+}
+
+rollback_help() {
+  if docker image inspect "$PREVIOUS_IMAGE" >/dev/null 2>&1 && [ "$NIBEPI_IMAGE" != "$PREVIOUS_IMAGE" ]; then
+    echo "  To go back to the image that ran before this upgrade:"
+    echo "    curl -fsSL $INSTALL_URL | NIBEPI_ROOT=$NIBEPI_ROOT NIBEPI_TAG=previous bash"
+  else
+    echo "  To run a specific dated build instead (see the package's tags on GitHub):"
+    echo "    curl -fsSL $INSTALL_URL | NIBEPI_ROOT=$NIBEPI_ROOT NIBEPI_TAG=YYYYMMDD bash"
+  fi
+  echo "  Re-running the installer without NIBEPI_TAG goes back to :latest."
+  echo "  If the pump or the RS485 wiring is the problem rather than the image, a"
+  echo "  rollback won't help - check: cd $NIBEPI_ROOT && docker compose logs --tail 100"
+}
+
 main() {
 NIBEPI_ROOT="${NIBEPI_ROOT:-$HOME/nibepi}"
-NIBEPI_IMAGE="${NIBEPI_IMAGE:-ghcr.io/greberg/nibepi-nodered:latest}"
+NIBEPI_TAG="${NIBEPI_TAG:-latest}"
+NIBEPI_IMAGE="${NIBEPI_IMAGE:-$IMAGE_REPO:$NIBEPI_TAG}"
 FLOW_REPO="${FLOW_REPO:-https://github.com/greberg/nibepi-flow.git}"
 FLOW_BRANCH="${FLOW_BRANCH:-improvements}"
 # /dev/serial0 is the Pi's stable alias for the GPIO UART. /dev/ttyAMA0 is
@@ -50,16 +95,40 @@ case "$(uname -m)" in
 esac
 
 # --- an existing container from another setup ------------------------------
+replace_existing=false
 existing_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' nibepi 2>/dev/null || true)"
 if docker inspect nibepi >/dev/null 2>&1 && [ "$existing_project" != "$NIBEPI_ROOT" ]; then
   if [ "${REPLACE:-}" = "1" ]; then
-    say "Removing the existing nibepi container (data in bind mounts is kept)"
-    docker rm -f nibepi >/dev/null
+    replace_existing=true
   else
     die "A container named nibepi already exists (from ${existing_project:-docker run}).
 Its data folders are not touched by removing it. Re-run with REPLACE=1 to replace it,
 and point NIBEPI_ROOT at its data folder if that isn't $NIBEPI_ROOT."
   fi
+fi
+
+# --- keep the running image as :previous, for a rollback ----------------------
+# Only a known-good one (healthy, or from before the healthcheck existed):
+# re-running after a bad upgrade must not overwrite the good :previous with
+# the bad image. Without a :previous yet, any running image beats none.
+if [ "$NIBEPI_IMAGE" = "$PREVIOUS_IMAGE" ]; then
+  docker image inspect "$PREVIOUS_IMAGE" >/dev/null 2>&1 \
+    || die "There is no $PREVIOUS_IMAGE on this machine to roll back to. Pick a dated build with NIBEPI_TAG=YYYYMMDD."
+  say "Rolling back to $PREVIOUS_IMAGE"
+elif running_image="$(docker inspect -f '{{.Image}}' nibepi 2>/dev/null)"; then
+  say "Keeping the current image for a rollback"
+  read -r state status <<<"$(container_state)"
+  if [ "$state $status" = "running healthy" ] || [ "$state $status" = "running none" ] \
+     || ! docker image inspect "$PREVIOUS_IMAGE" >/dev/null 2>&1; then
+    docker tag "$running_image" "$PREVIOUS_IMAGE"
+    echo "    current image kept as $PREVIOUS_IMAGE"
+  else
+    echo "    the running container is $state/$status - keeping the existing $PREVIOUS_IMAGE"
+  fi
+fi
+if $replace_existing; then
+  say "Removing the existing nibepi container (data in bind mounts is kept)"
+  docker rm -f nibepi >/dev/null
 fi
 
 # --- data folders ------------------------------------------------------------
@@ -143,8 +212,10 @@ YML
 
 # --- start ------------------------------------------------------------------------
 cd "$NIBEPI_ROOT"
-say "Pulling $NIBEPI_IMAGE"
-docker compose pull --quiet
+if [ "$NIBEPI_IMAGE" != "$PREVIOUS_IMAGE" ]; then  # :previous only exists locally
+  say "Pulling $NIBEPI_IMAGE"
+  docker compose pull --quiet
+fi
 say "Starting"
 docker compose up -d --force-recreate
 
@@ -162,10 +233,38 @@ if [ -f "$settings" ] && ! grep -q 'credentialSecret: *process.env.NODE_RED_CRED
   docker compose restart >/dev/null
 fi
 
+# Dangling images only; :previous is tagged and stays.
 docker image prune -f >/dev/null 2>&1 || true
+
+# --- health -------------------------------------------------------------------------
+# No automatic rollback: "unhealthy" means no data from the pump, which is as
+# likely the pump, the wiring or the UART config as the new image, and a
+# silent rollback would hide that. Say what happened and how to go back.
+say "Checking health"
+health=starting
+wait_healthy
 ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-say "NibePi is running: http://${ip:-<pi-address>}:1880  (dashboard: /ui)"
+url="http://${ip:-<pi-address>}:1880"
+case "$health" in
+  healthy)
+    say "NibePi is running and healthy: $url  (dashboard: /ui)" ;;
+  none)
+    say "NibePi is running: $url  (dashboard: /ui)"
+    echo "    this image has no healthcheck, so its health isn't known" ;;
+  starting)
+    warn "NibePi is running ($url) but hasn't reported healthy yet - usually no data from the pump so far."
+    echo "  Check again in a few minutes:  docker ps   (STATUS shows healthy/unhealthy)"
+    echo "  If it turns unhealthy:"
+    rollback_help ;;
+  *)
+    printf 'error: the nibepi container is %s.\n' "$health" >&2
+    docker inspect -f '{{if .State.Health}}{{range .State.Health.Log}}    {{.Output}}{{end}}{{end}}' nibepi 2>/dev/null | tail -n 3 || true
+    docker compose logs --tail 20 nibepi || true
+    rollback_help
+    exit 1 ;;
+esac
 echo "    logs:    cd $NIBEPI_ROOT && docker compose logs -f"
+echo "    status:  docker ps --filter name=nibepi"
 echo "    upgrade: re-run this installer"
 }
 
