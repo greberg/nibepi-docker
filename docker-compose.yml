@@ -1,37 +1,46 @@
-# Same container as the docker run command in README.md, as a compose file.
-# A rebuild is picked up with:  docker compose up -d --force-recreate
-# (no "container name already in use" - compose replaces it).
-# Kept in step with pi/install.sh's generated compose.yml and the NibePi
-# workspace's docker/docker-compose.yml.
+# The NibePi gateway as a compose service. Kept in step with the compose.yml
+# that pi/install.sh writes and the NibePi workspace's docker/docker-compose.yml.
+#
+# Settings go in a .env file next to this one (see README.md), e.g.
+#   NIBEPI_MQTT_HOST=192.168.1.10
+#   NIBEPI_MQTT_USER=nibepi
+#   NIBEPI_MQTT_PASS='secret'
+# It is read both for ${...} below and, through env_file, by the gateway.
+#
+#   docker compose up -d                      start / pick up a new image
+#   docker compose pull && docker compose up -d   upgrade
+#
+# No ports: the gateway connects out to the MQTT broker.
 services:
-  nibepi:
-    image: ${NIBEPI_IMAGE:-nibepi-nodered}
-    build: .
-    container_name: nibepi
+  nibepi-gateway:
+    image: ghcr.io/greberg/nibepi-gateway:${NIBEPI_TAG:-latest}
+    container_name: nibepi-gateway
     restart: unless-stopped
-    stdin_open: true
-    tty: true
+    # tini as PID 1: forwards SIGTERM and reaps the backend's shell children.
+    init: true
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - TZ=${TZ:-Europe/Stockholm}
-      # Read by settings.js once it has
-      #   credentialSecret: process.env.NODE_RED_CREDENTIAL_SECRET
-      - NODE_RED_CREDENTIAL_SECRET=${NODE_RED_CREDENTIAL_SECRET:-}
+      TZ: ${TZ:-Europe/Stockholm}
+      # The host's port is always /dev/ttyAMA0 inside (devices below).
+      NIBEPI_SERIAL_PORT: /dev/ttyAMA0
+    # RS485 HAT on the Pi's serial port. /dev/serial0 is the stable alias for
+    # the GPIO UART (/dev/ttyAMA0 on the host is the Bluetooth UART on a Pi 3/4
+    # without dtoverlay=disable-bt). Remove devices and group_add for NibeGW.
+    devices:
+      - ${NIBEPI_SERIAL:-/dev/serial0}:/dev/ttyAMA0
+    # The device node keeps the host's group. "dialout" resolves inside the
+    # image (gid 20, as on Raspberry Pi OS); if the host's dialout gid differs,
+    # set SERIAL_GID to it:  getent group dialout | cut -d: -f3
+    group_add:
+      - "${SERIAL_GID:-dialout}"
     volumes:
-      - ${NIBEPI_ROOT:-/opt/nibepi}/data/nibepi-flow:/data
-      - ${NIBEPI_ROOT:-/opt/nibepi}/etc/nibepi:/etc/nibepi
-      - ${NIBEPI_ROOT:-/opt/nibepi}/tmp:/tmp
-    ports:
-      - "1880:1880"
-      - "9999:9999/udp"
-    # For an RS485 HAT on the host's serial port instead of a NibeGW gateway,
-    # pass the port through and let node-red open it (dialout's gid, usually 20).
-    # /dev/serial0 is the Pi's stable alias for the GPIO UART (/dev/ttyAMA0 is
-    # the Bluetooth UART on a Pi 3/4 without dtoverlay=disable-bt); inside the
-    # container it is always /dev/ttyAMA0, which the nibepi config expects.
-    # devices:
-    #   - ${NIBEPI_SERIAL:-/dev/serial0}:/dev/ttyAMA0
-    # group_add:
-    #   - "${SERIAL_GID:-20}"
+      - ./config:/etc/nibepi        # config.json (+ .bak), lease baselines
+    # NibeGW only: the gateway sends its frames to this host on UDP 9999.
+    # Not needed for RS485 serial or Modbus TCP.
+    # ports:
+    #   - "9999:9999/udp"
     # Docker's default json-file log never rotates and fills the SD card.
     logging:
       driver: json-file
