@@ -1,6 +1,8 @@
 # Same container as the docker run command in README.md, as a compose file.
 # A rebuild is picked up with:  docker compose up -d --force-recreate
 # (no "container name already in use" - compose replaces it).
+# Kept in step with pi/install.sh's generated compose.yml and the NibePi
+# workspace's docker/docker-compose.yml.
 services:
   nibepi:
     image: ${NIBEPI_IMAGE:-nibepi-nodered}
@@ -11,6 +13,9 @@ services:
     tty: true
     environment:
       - TZ=${TZ:-Europe/Stockholm}
+      # Read by settings.js once it has
+      #   credentialSecret: process.env.NODE_RED_CREDENTIAL_SECRET
+      - NODE_RED_CREDENTIAL_SECRET=${NODE_RED_CREDENTIAL_SECRET:-}
     volumes:
       - ${NIBEPI_ROOT:-/opt/nibepi}/data/nibepi-flow:/data
       - ${NIBEPI_ROOT:-/opt/nibepi}/etc/nibepi:/etc/nibepi
@@ -19,8 +24,17 @@ services:
       - "1880:1880"
       - "9999:9999/udp"
     # For an RS485 HAT on the host's serial port instead of a NibeGW gateway,
-    # pass the port through and let node-red open it (dialout's gid, usually 20):
+    # pass the port through and let node-red open it (dialout's gid, usually 20).
+    # /dev/serial0 is the Pi's stable alias for the GPIO UART (/dev/ttyAMA0 is
+    # the Bluetooth UART on a Pi 3/4 without dtoverlay=disable-bt); inside the
+    # container it is always /dev/ttyAMA0, which the nibepi config expects.
     # devices:
-    #   - /dev/ttyAMA0:/dev/ttyAMA0
+    #   - ${NIBEPI_SERIAL:-/dev/serial0}:/dev/ttyAMA0
     # group_add:
-    #   - "20"
+    #   - "${SERIAL_GID:-20}"
+    # Docker's default json-file log never rotates and fills the SD card.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
