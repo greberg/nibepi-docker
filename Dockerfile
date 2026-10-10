@@ -28,3 +28,16 @@ RUN cd /usr/src/node-red-contrib-nibepi && \
 RUN npm install node-red-dashboard@3.6.6 --omit=dev && \
     npm install node-red-node-ui-list@0.3.6 --omit=dev
 
+# Healthy = the nibepi config node is alive (it rewrites the file every
+# minute) and the pump has answered in the last 10 minutes. Replaces the
+# base image's check, which only asks whether the editor answers HTTP.
+# Docker doesn't restart an unhealthy container on its own; this makes the
+# state visible in docker ps and to pi/install.sh / scripts/deploy.sh.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=5m --retries=3 \
+  CMD node -e 'const f="/dev/shm/nibepi-health.json"; let h; \
+    try { h = JSON.parse(require("fs").readFileSync(f, "utf8")); } \
+    catch (e) { console.log("unhealthy: " + f + " missing or unreadable"); process.exit(1); } \
+    const now = Date.now(); \
+    if (!(now - h.ts < 180e3)) { console.log("unhealthy: health file stale (core " + h.core + ")"); process.exit(1); } \
+    if (!h.lastData || !(now - h.lastData < 600e3)) { console.log("unhealthy: no data from the pump for 10 min (core " + h.core + ")"); process.exit(1); } \
+    console.log("ok: core " + h.core);'
