@@ -1,4 +1,6 @@
-# The two code repositories are checked out here as siblings and built into the
-# image. Each keeps its own history; neither belongs to this repo.
+# nibepi-backend is checked out here as nibepi/ and built into the image.
+# It keeps its own history and doesn't belong to this repo.
 /nibepi/
-/node-red-contrib-nibepi/
+# docker compose's local settings (MQTT credentials) and the config volume.
+.env
+/config/

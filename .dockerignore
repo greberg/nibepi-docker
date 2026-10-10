@@ -1,5 +1,7 @@
 **/node_modules
 **/.git
 **/*.log
+nibepi/.github
+nibepi/test
 nibepi/test.js
 nibepi/example*.js

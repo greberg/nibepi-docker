@@ -1,43 +1,76 @@
-# Node-RED 5.0.7 on Node 24 — the combination the dependency audit was run against.
-# serialport 13 ships prebuilt binaries for Node >=20, so no build toolchain is
-# needed at image build time (serialport 9 had prebuilds only up to Node 16,
-# which is what pinned this image to the -14 tag).
-FROM nodered/node-red:5.0.7-24
+# NibePi gateway: nibepi-backend's gateway.js on Node 24, without Node-RED.
+# It talks to the pump (RS485 serial or NibeGW) and connects out to an MQTT
+# broker; control logic lives in the Home Assistant component (nibepi-ha).
+# The Node-RED image this replaced is the nodered-final tag of this repo.
 
-# Tells the nibepi core it is running in a container: config writes go
-# straight to disk instead of bracketing themselves with sudo mount
-# remount,rw to reach a read-only SD card. Bare-Pi installs leave this unset.
-ENV NIBEPI_DOCKER=1
+# The backend source: by default the nibepi/ checkout of nibepi-backend next
+# to this file (CI and the workspace's scripts/build.sh put it there). A
+# named build context called "backend" replaces this stage, so a checkout
+# elsewhere works without copying it in:
+#   docker build --build-context backend=../nibepi-backend .
+FROM scratch AS backend
+COPY nibepi/ /
 
-COPY nibepi /usr/src/nibepi
-COPY node-red-contrib-nibepi /usr/src/node-red-contrib-nibepi
+# serialport ships prebuilt binaries for linux arm64/amd64 (glibc); the
+# toolchain is only there for when no prebuild matches, and stays in this
+# stage.
+FROM node:24-bookworm-slim AS build
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=backend / /app/
+# A named context brings whatever is in the checkout, node_modules built on
+# another OS included; drop it and everything that isn't the runtime.
+RUN rm -rf node_modules .git .github test test.js example*.js \
+ && if [ -f package-lock.json ]; then npm ci --omit=dev --no-audit --no-fund; \
+    else npm install --omit=dev --no-audit --no-fund; fi \
+ && npm cache clean --force
 
-USER root
-RUN chown -R node-red /usr/src/nibepi /usr/src/node-red-contrib-nibepi
-USER node-red
+FROM node:24-bookworm-slim
 
-RUN cd /usr/src/node-red-contrib-nibepi && \
-    npm install ../nibepi --omit=dev && \
-    cd /usr/src/node-red && \
-    npm install ../node-red-contrib-nibepi --omit=dev
+LABEL org.opencontainers.image.title="nibepi-gateway" \
+      org.opencontainers.image.description="NibePi gateway for Nibe heat pumps: RS485/NibeGW to MQTT, with register leases for Home Assistant" \
+      org.opencontainers.image.source="https://github.com/greberg/nibepi-docker" \
+      org.opencontainers.image.url="https://github.com/greberg/nibepi-docker" \
+      org.opencontainers.image.licenses="MIT"
 
-# Pinned to what node-red-contrib-nibepi's package.json resolves to (~3.6.6,
-# ~0.3.6), so a rebuild can't pick up a different dashboard by surprise.
-# FROM above is pinned by tag, not digest; the nightly CI build is what
-# picks up the base image's security updates.
-RUN npm install node-red-dashboard@3.6.6 --omit=dev && \
-    npm install node-red-node-ui-list@0.3.6 --omit=dev
+# NIBEPI_DOCKER=1: config writes go straight to disk instead of bracketing
+# themselves with sudo mount remount,rw (bare-Pi read-only SD card).
+ENV NODE_ENV=production \
+    NIBEPI_DOCKER=1 \
+    NIBEPI_CONFIG_DIR=/etc/nibepi \
+    NIBEPI_HEALTH_FILE=/dev/shm/nibepi-health.json
 
-# Healthy = the nibepi config node is alive (it rewrites the file every
-# minute) and the pump has answered in the last 10 minutes. Replaces the
-# base image's check, which only asks whether the editor answers HTTP.
-# Docker doesn't restart an unhealthy container on its own; this makes the
-# state visible in docker ps and to pi/install.sh / scripts/deploy.sh.
+# The node user (uid 1000) gets dialout (gid 20 on Debian) for the serial
+# port. The device node keeps the host's gid, so compose also adds the host's
+# dialout group with group_add when that isn't 20.
+RUN usermod -aG dialout node \
+ && mkdir -p /etc/nibepi \
+ && chown node:node /etc/nibepi
+
+# Owned by root: the gateway can't modify its own code.
+COPY --from=build /app /app
+WORKDIR /app
+USER node
+
+# config.json (atomic writes, .bak) and the persisted lease baselines.
+VOLUME /etc/nibepi
+
+# Healthy = the gateway is alive (it rewrites the health file every minute)
+# and the pump has answered in the last 10 minutes. Docker doesn't restart an
+# unhealthy container on its own; this makes the state visible in docker ps
+# and to pi/install.sh / scripts/deploy.sh.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=5m --retries=3 \
-  CMD node -e 'const f="/dev/shm/nibepi-health.json"; let h; \
+  CMD node -e 'const f=process.env.NIBEPI_HEALTH_FILE||"/dev/shm/nibepi-health.json"; let h; \
     try { h = JSON.parse(require("fs").readFileSync(f, "utf8")); } \
     catch (e) { console.log("unhealthy: " + f + " missing or unreadable"); process.exit(1); } \
     const now = Date.now(); \
     if (!(now - h.ts < 180e3)) { console.log("unhealthy: health file stale (core " + h.core + ")"); process.exit(1); } \
     if (!h.lastData || !(now - h.lastData < 600e3)) { console.log("unhealthy: no data from the pump for 10 min (core " + h.core + ")"); process.exit(1); } \
     console.log("ok: core " + h.core);'
+
+# gateway.js handles SIGTERM itself: stops the core and MQTT cleanly (leases
+# are not released; the grace lease covers the restart).
+STOPSIGNAL SIGTERM
+CMD ["node", "gateway.js"]
