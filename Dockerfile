@@ -21,5 +21,10 @@ RUN cd /usr/src/node-red-contrib-nibepi && \
     cd /usr/src/node-red && \
     npm install ../node-red-contrib-nibepi --omit=dev
 
-RUN npm install node-red-dashboard --omit=dev && \
-    npm install node-red-node-ui-list --omit=dev
+# Pinned to what node-red-contrib-nibepi's package.json resolves to (~3.6.6,
+# ~0.3.6), so a rebuild can't pick up a different dashboard by surprise.
+# FROM above is pinned by tag, not digest; the nightly CI build is what
+# picks up the base image's security updates.
+RUN npm install node-red-dashboard@3.6.6 --omit=dev && \
+    npm install node-red-node-ui-list@0.3.6 --omit=dev
+
