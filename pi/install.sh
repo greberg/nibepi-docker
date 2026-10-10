@@ -8,8 +8,9 @@
 # Data is never overwritten. Settings (override with environment variables):
 #   NIBEPI_ROOT    where data lives               default ~/nibepi
 #   NIBEPI_IMAGE   image to run                   default ghcr.io/greberg/nibepi-nodered:latest
-#   NIBEPI_SERIAL  RS485 serial device, or "none" for a NibeGW gateway
-#                                                 default /dev/ttyAMA0 if present, else none
+#   NIBEPI_SERIAL  RS485 serial device on the host, or "none" for a NibeGW
+#                  gateway; it is /dev/ttyAMA0 inside the container
+#                                                 default /dev/serial0 if present, else none
 #   FLOW_REPO      flows to start from            default https://github.com/greberg/nibepi-flow.git
 #   FLOW_BRANCH    branch of FLOW_REPO            default improvements
 #   REPLACE=1      remove an existing "nibepi" container started some other way
@@ -20,6 +21,7 @@
 set -euo pipefail
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
+warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 main() {
@@ -27,8 +29,12 @@ NIBEPI_ROOT="${NIBEPI_ROOT:-$HOME/nibepi}"
 NIBEPI_IMAGE="${NIBEPI_IMAGE:-ghcr.io/greberg/nibepi-nodered:latest}"
 FLOW_REPO="${FLOW_REPO:-https://github.com/greberg/nibepi-flow.git}"
 FLOW_BRANCH="${FLOW_BRANCH:-improvements}"
+# /dev/serial0 is the Pi's stable alias for the GPIO UART. /dev/ttyAMA0 is
+# not: on a Pi 3/4 without dtoverlay=disable-bt it is the Bluetooth UART.
+serial_guessed=false
 if [ -z "${NIBEPI_SERIAL:-}" ]; then
-  if [ -e /dev/ttyAMA0 ]; then NIBEPI_SERIAL=/dev/ttyAMA0; else NIBEPI_SERIAL=none; fi
+  serial_guessed=true
+  if [ -e /dev/serial0 ]; then NIBEPI_SERIAL=/dev/serial0; else NIBEPI_SERIAL=none; fi
 fi
 
 # --- prerequisites ---------------------------------------------------------
@@ -86,18 +92,30 @@ if ! grep -q '^NODE_RED_CREDENTIAL_SECRET=.' "$env_file"; then
 fi
 
 # --- compose file ---------------------------------------------------------------
+uart_help="For the RS485 HAT, add to /boot/firmware/config.txt (this installer doesn't edit it):
+      enable_uart=1
+      dtoverlay=disable-bt    # Pi 3/4: puts the full PL011 UART on the GPIO pins
+  then reboot (and on a Pi 3/4: sudo systemctl disable hciuart), and re-run this installer.
+  raspi-config -> Interface -> Serial (login shell: no, hardware: yes) sets enable_uart."
 serial_block=""
 if [ "$NIBEPI_SERIAL" != "none" ]; then
-  [ -e "$NIBEPI_SERIAL" ] || die "$NIBEPI_SERIAL does not exist. Enable the serial port (raspi-config -> Interface -> Serial: login shell no, hardware yes), or set NIBEPI_SERIAL=none for a NibeGW gateway."
+  [ -e "$NIBEPI_SERIAL" ] || die "$NIBEPI_SERIAL does not exist. $uart_help
+  Or set NIBEPI_SERIAL=none for a NibeGW gateway."
+  if [ "$(readlink -f "$NIBEPI_SERIAL")" = /dev/ttyS0 ]; then
+    warn "$NIBEPI_SERIAL is the mini UART (ttyS0), whose baud rate drifts with the CPU clock. $uart_help"
+  fi
   dialout_gid="$(getent group dialout | cut -d: -f3)"
   serial_block="    devices:
-      - $NIBEPI_SERIAL:$NIBEPI_SERIAL
+      - $NIBEPI_SERIAL:/dev/ttyAMA0
     group_add:
       - \"${dialout_gid:-20}\""
+elif $serial_guessed; then
+  warn "/dev/serial0 is missing, so no serial port is passed through (fine for a NibeGW gateway). $uart_help"
 fi
 say "Writing $NIBEPI_ROOT/compose.yml (serial: $NIBEPI_SERIAL)"
 cat > "$NIBEPI_ROOT/compose.yml" <<YML
 # Written by pi/install.sh - re-running the installer regenerates it.
+# Kept in step with nibepi-docker's docker-compose.yml.
 services:
   nibepi:
     image: \${NIBEPI_IMAGE}
@@ -107,7 +125,7 @@ services:
     tty: true
     environment:
       - TZ=\${TZ}
-      - NODE_RED_CREDENTIAL_SECRET=\${NODE_RED_CREDENTIAL_SECRET}
+      - NODE_RED_CREDENTIAL_SECRET=\${NODE_RED_CREDENTIAL_SECRET:?set NODE_RED_CREDENTIAL_SECRET in $env_file}
     volumes:
       - ./data/nibepi-flow:/data
       - ./etc/nibepi:/etc/nibepi
