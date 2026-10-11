@@ -12,8 +12,9 @@ F1255 ──RS485── Pi: nibepi-gateway ──MQTT──> broker (HA's Mosqui
 ```
 
 The image runs `node gateway.js` from
-[nibepi-backend](https://github.com/greberg/nibepi-backend). It publishes no
-ports and needs nothing inbound (except UDP 9999 with a NibeGW gateway).
+[nibepi-backend](https://github.com/greberg/nibepi-backend). The only
+inbound port is TCP 8080, a read-only status page for the LAN (plus UDP 9999
+with a NibeGW gateway).
 
 > **History.** Until October 2026 this repository built a Node-RED image
 > (`ghcr.io/greberg/nibepi-nodered`) with dashboard and controllers. That
@@ -43,6 +44,8 @@ docker compose up -d
 docker ps                            # STATUS turns healthy within ~5 minutes
 ```
 
+Then open the status page at `http://<pi>:8080/` (see [Status page](#status-page)).
+
 | file | holds |
 |---|---|
 | `~/nibepi/docker-compose.yml` | image tag, serial port, MQTT and other gateway settings. Yours: keep it on the Pi, don't commit a filled-in copy. |
@@ -53,7 +56,7 @@ UART), mapped to `/dev/ttyAMA0` in the container. The RS485 HAT needs
 `enable_uart=1` (and `dtoverlay=disable-bt` on a Pi 3/4) in
 `/boot/firmware/config.txt`. For a NibeGW gateway instead: set
 `NIBEPI_CONNECTION: 'nibegw'` and `NIBEPI_NIBEGW_HOST`, remove `devices:` and
-`group_add:`, and uncomment `ports:`.
+`group_add:`, and uncomment the `9999/udp` line under `ports:`.
 
 ### The installer
 
@@ -72,6 +75,10 @@ with the MQTT settings filled in, sets up `~/nibepi/config`, pulls, starts
 it in and re-run. An existing `docker-compose.yml` is never changed: the
 installer saves the current template as `docker-compose.yml.example` and
 shows what changed in it since the last run, for you to merge.
+`NIBEPI_UI_PORT`, `NIBEPI_UI_USER` and `NIBEPI_UI_PASS` can be passed like
+the MQTT settings. A compose file written before the status page existed
+needs the `ports:` entry `"8080:8080"` merged in from the example to reach
+it.
 
 An install by the previous version of the installer (`.env` plus a generated
 `compose.yml`) is converted: the `.env` settings go into the new
@@ -180,6 +187,8 @@ set in `docker-compose.yml`'s `environment:` section. They override
 | `TZ` | time zone for the log, e.g. `Europe/Stockholm` |
 | `NIBEPI_CONFIG_DIR` | `/etc/nibepi` in the image |
 | `NIBEPI_HEALTH_FILE` | `/dev/shm/nibepi-health.json` in the image |
+| `NIBEPI_UI_PORT` | status page port inside the container, `8080` in the image; empty turns it off |
+| `NIBEPI_UI_USER`, `NIBEPI_UI_PASS` | optional HTTP Basic auth for the status page: both or neither |
 
 Values are single-quoted in the file; inside the quotes write `'` as `''`
 and `$` as `$$` (compose would substitute a single `$`):
@@ -196,6 +205,32 @@ device keeps the host's group, so the compose file adds `dialout` with
 Health: the gateway rewrites `/dev/shm/nibepi-health.json` every minute.
 The container is unhealthy when that file is missing or older than 3
 minutes, or the pump hasn't answered for 10 minutes (`docker ps` shows it).
+
+## Status page
+
+The gateway serves a read-only status page at `http://<pi>:8080/`. It shows
+the following and refreshes itself every 5 seconds:
+
+- the connection to the pump and to MQTT
+- the age of the last data from the pump
+- bus health over the last hour
+- the virtual RMU40 room units (emulated or read-only, the last poll and
+  the last room temperature written)
+- leases, with a countdown to expiry
+- key temperatures
+- recent warnings and errors
+
+It needs no internet: everything is in one page. `GET /healthz` answers
+`200` or `503` by the same rule as the healthcheck (pump data in the last 10
+minutes), for an external monitor.
+
+- **Port.** To move it, change the host port on the left of `"8080:8080"`
+  in `ports:`. To turn it off, remove that line and set `NIBEPI_UI_PORT: ''`.
+- **Access.** Without `NIBEPI_UI_USER`/`NIBEPI_UI_PASS`, anyone on the LAN
+  can read it. It changes nothing and never shows the MQTT password, but it
+  does show the broker address and user. Keep it on the LAN and don't
+  forward it to the internet. Basic auth over plain HTTP is not encrypted;
+  for remote access, use a VPN.
 
 ## Connecting to Home Assistant's Mosquitto
 

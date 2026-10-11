@@ -35,9 +35,11 @@ LABEL org.opencontainers.image.title="nibepi-gateway" \
       org.opencontainers.image.url="https://github.com/greberg/nibepi-docker" \
       org.opencontainers.image.licenses="MIT"
 
+# NIBEPI_UI_PORT: the read-only status page; an empty value turns it off.
 ENV NODE_ENV=production \
     NIBEPI_CONFIG_DIR=/etc/nibepi \
-    NIBEPI_HEALTH_FILE=/dev/shm/nibepi-health.json
+    NIBEPI_HEALTH_FILE=/dev/shm/nibepi-health.json \
+    NIBEPI_UI_PORT=8080
 
 # The node user (uid 1000) gets dialout (gid 20 on Debian) for the serial
 # port. The device node keeps the host's gid, so compose also adds the host's
@@ -53,6 +55,9 @@ USER node
 
 # config.json (atomic writes, .bak) and the persisted lease baselines.
 VOLUME /etc/nibepi
+
+# The status page (http://<pi>:8080/).
+EXPOSE 8080
 
 # Healthy = the gateway is alive (it rewrites the health file every minute)
 # and the pump has answered in the last 10 minutes. Docker doesn't restart an

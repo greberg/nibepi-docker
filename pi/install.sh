@@ -41,6 +41,7 @@
 #   NIBEPI_MQTT_HOST NIBEPI_MQTT_PORT NIBEPI_MQTT_USER NIBEPI_MQTT_PASS
 #   NIBEPI_MQTT_TOPIC NIBEPI_CONNECTION (serial|nibegw) NIBEPI_NIBEGW_HOST
 #   NIBEPI_NIBEGW_PORT NIBEPI_RAW_SET (all|none|list) NIBEPI_LOG_LEVEL TZ
+#   NIBEPI_UI_PORT NIBEPI_UI_USER NIBEPI_UI_PASS (the status page)
 #
 # Everything runs from main(), called on the last line, so a download cut off
 # halfway through (curl | bash) is a syntax error that runs nothing rather
@@ -59,7 +60,7 @@ NAME=nibepi-gateway
 OLD_NAME=nibepi   # the Node-RED installer's container
 SETTING_KEYS=(NIBEPI_MQTT_HOST NIBEPI_MQTT_PORT NIBEPI_MQTT_USER NIBEPI_MQTT_PASS
   NIBEPI_MQTT_TOPIC NIBEPI_CONNECTION NIBEPI_NIBEGW_HOST NIBEPI_NIBEGW_PORT
-  NIBEPI_RAW_SET NIBEPI_LOG_LEVEL TZ)
+  NIBEPI_RAW_SET NIBEPI_LOG_LEVEL TZ NIBEPI_UI_PORT NIBEPI_UI_USER NIBEPI_UI_PASS)
 
 container_state() {  # running/exited + health: healthy, unhealthy, starting or none
   docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$NAME" 2>/dev/null \
@@ -272,7 +273,8 @@ add-on on the Home Assistant machine) in $compose_file, then re-run:
   curl -fsSL $INSTALL_URL | bash$hint"
   else
     echo "For NibeGW, edit $compose_file: set NIBEPI_CONNECTION: 'nibegw' and
-NIBEPI_NIBEGW_HOST, remove devices: and group_add:, uncomment ports:. Then re-run:
+NIBEPI_NIBEGW_HOST, remove devices: and group_add:, uncomment the 9999/udp line
+under ports:. Then re-run:
   curl -fsSL $INSTALL_URL | bash"
   fi
   [ "$NIBEPI_ROOT" = "$HOME/nibepi" ] || echo "(with NIBEPI_ROOT=$NIBEPI_ROOT)"
@@ -426,6 +428,16 @@ case "$health" in
     exit 1 ;;
 esac
 if $old_present && [ "$health" != starting ]; then nodered_help; fi
+# The status page, when it is on and its port is published in ports:.
+ui_port="$(compose_get "$compose_file" NIBEPI_UI_PORT)"
+ui_host_port=""
+if [ -n "$ui_port" ] && [ "$ui_port" != 0 ]; then
+  ui_host_port="$(sed -n "s/^ *- [\"']\{0,1\}\([0-9]*\):$ui_port[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}\$/\1/p" "$compose_file" | head -n 1)"
+fi
+if [ -n "$ui_host_port" ]; then
+  pi_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  echo "    web UI:   http://${pi_ip:-<this Pi>}:$ui_host_port/  (read-only status page, LAN only)"
+fi
 echo "    logs:     cd $NIBEPI_ROOT && docker compose logs -f"
 echo "    status:   docker ps --filter name=$NAME"
 echo "    settings: $compose_file (then: cd $NIBEPI_ROOT && docker compose up -d)"

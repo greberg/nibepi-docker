@@ -55,6 +55,12 @@ services:
       NIBEPI_RAW_SET: 'all'
       # error, warn, info, debug or trace (every raw bus frame).
       NIBEPI_LOG_LEVEL: 'info'
+      # The read-only status page, http://<pi>:8080/. Empty turns it off;
+      # another port here needs the same port on the right in ports: below.
+      NIBEPI_UI_PORT: '8080'
+      # Optional HTTP Basic auth for the page: set both, or leave both empty.
+      NIBEPI_UI_USER: ''
+      NIBEPI_UI_PASS: ''
       TZ: 'Europe/Stockholm'
     # The RS485 HAT on the Pi's GPIO UART. /dev/serial0 is its stable alias
     # (needs enable_uart=1, and dtoverlay=disable-bt on a Pi 3/4, in
@@ -67,9 +73,12 @@ services:
     # (getent group dialout | cut -d: -f3), put that number here.
     group_add:
       - dialout
-    # NibeGW only: it sends its frames to this host on UDP 9999.
-    # ports:
-    #   - "9999:9999/udp"
+    ports:
+      # The status page. Change the host port (left) or remove the line to
+      # disable it. LAN only - don't expose it to the internet.
+      - "8080:8080"
+      # NibeGW only: it sends its frames to this host on UDP 9999.
+      # - "9999:9999/udp"
     volumes:
       - ./config:/etc/nibepi   # config.json (+ .bak), lease baselines
     # The healthcheck is built into the image: healthy once the pump has
