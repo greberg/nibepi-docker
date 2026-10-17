@@ -75,8 +75,8 @@ with the MQTT settings filled in, sets up `~/nibepi/config`, pulls, starts
 it in and re-run. An existing `docker-compose.yml` is never changed: the
 installer saves the current template as `docker-compose.yml.example` and
 shows what changed in it since the last run, for you to merge.
-`NIBEPI_UI_PORT`, `NIBEPI_UI_USER` and `NIBEPI_UI_PASS` can be passed like
-the MQTT settings. A compose file written before the status page existed
+`NIBEPI_MQTT_DISCOVERY`, `NIBEPI_UI_PORT`, `NIBEPI_UI_USER` and
+`NIBEPI_UI_PASS` can be passed like the MQTT settings. A compose file written before the status page existed
 needs the `ports:` entry `"8080:8080"` merged in from the example to reach
 it.
 
@@ -179,6 +179,7 @@ set in `docker-compose.yml`'s `environment:` section. They override
 | `NIBEPI_MQTT_HOST`, `NIBEPI_MQTT_PORT` | broker, port default 1883; without a host MQTT is off |
 | `NIBEPI_MQTT_USER`, `NIBEPI_MQTT_PASS` | broker login |
 | `NIBEPI_MQTT_TOPIC` | topic prefix, default `nibe/modbus/` |
+| `NIBEPI_MQTT_DISCOVERY` | `true` also announces every polled register and the Bus errors sensor to Home Assistant as MQTT sensors on a "Nibe <model>" device; `false` (default) removes them. The NibePi integration does not need it |
 | `NIBEPI_CONNECTION` | `serial` or `nibegw` |
 | `NIBEPI_SERIAL_PORT` | `/dev/ttyAMA0`, where `devices:` maps the host's port |
 | `NIBEPI_NIBEGW_HOST`, `NIBEPI_NIBEGW_PORT` | NibeGW gateway |

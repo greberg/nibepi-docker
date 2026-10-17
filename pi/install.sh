@@ -39,7 +39,8 @@
 #                  some other way (not in NIBEPI_ROOT)
 # Gateway settings, only used when a new docker-compose.yml is written:
 #   NIBEPI_MQTT_HOST NIBEPI_MQTT_PORT NIBEPI_MQTT_USER NIBEPI_MQTT_PASS
-#   NIBEPI_MQTT_TOPIC NIBEPI_CONNECTION (serial|nibegw) NIBEPI_NIBEGW_HOST
+#   NIBEPI_MQTT_TOPIC NIBEPI_MQTT_DISCOVERY (true|false)
+#   NIBEPI_CONNECTION (serial|nibegw) NIBEPI_NIBEGW_HOST
 #   NIBEPI_NIBEGW_PORT NIBEPI_RAW_SET (all|none|list) NIBEPI_LOG_LEVEL TZ
 #   NIBEPI_UI_PORT NIBEPI_UI_USER NIBEPI_UI_PASS (the status page)
 #
@@ -59,7 +60,7 @@ NODERED_INSTALL_URL=https://raw.githubusercontent.com/greberg/nibepi-docker/node
 NAME=nibepi-gateway
 OLD_NAME=nibepi   # the Node-RED installer's container
 SETTING_KEYS=(NIBEPI_MQTT_HOST NIBEPI_MQTT_PORT NIBEPI_MQTT_USER NIBEPI_MQTT_PASS
-  NIBEPI_MQTT_TOPIC NIBEPI_CONNECTION NIBEPI_NIBEGW_HOST NIBEPI_NIBEGW_PORT
+  NIBEPI_MQTT_TOPIC NIBEPI_MQTT_DISCOVERY NIBEPI_CONNECTION NIBEPI_NIBEGW_HOST NIBEPI_NIBEGW_PORT
   NIBEPI_RAW_SET NIBEPI_LOG_LEVEL TZ NIBEPI_UI_PORT NIBEPI_UI_USER NIBEPI_UI_PASS)
 
 container_state() {  # running/exited + health: healthy, unhealthy, starting or none

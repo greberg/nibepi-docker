@@ -42,6 +42,10 @@ services:
       NIBEPI_MQTT_USER: ''              # e.g. nibepi, a Home Assistant user
       NIBEPI_MQTT_PASS: ''
       NIBEPI_MQTT_TOPIC: 'nibe/modbus/'
+      # true: also announce every polled register and the Bus errors sensor
+      # to Home Assistant as MQTT sensors on a 'Nibe <model>' device; the
+      # NibePi integration does not need it.
+      NIBEPI_MQTT_DISCOVERY: 'false'
       # serial (RS485 HAT, devices below) or nibegw.
       NIBEPI_CONNECTION: 'serial'
       # The serial port inside the container; devices below maps the host's.
