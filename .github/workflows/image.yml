@@ -52,6 +52,7 @@ jobs:
           echo "tag=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
           echo "sha=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           echo "backend=$(git -C nibepi rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build=$(date -u +%Y%m%d)-$(git -C nibepi rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -76,5 +77,7 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             nibepi.backend.revision=${{ steps.date.outputs.backend }}
+          build-args: |
+            NIBEPI_BUILD=${{ steps.date.outputs.build }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

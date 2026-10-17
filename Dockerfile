@@ -35,8 +35,13 @@ LABEL org.opencontainers.image.title="nibepi-gateway" \
       org.opencontainers.image.url="https://github.com/greberg/nibepi-docker" \
       org.opencontainers.image.licenses="MIT"
 
+# NIBEPI_BUILD: the build id the gateway publishes and shows on its status
+# page (CI: <date>-<backend commit>); empty for a local build.
+ARG NIBEPI_BUILD=""
+
 # NIBEPI_UI_PORT: the read-only status page; an empty value turns it off.
 ENV NODE_ENV=production \
+    NIBEPI_BUILD=${NIBEPI_BUILD} \
     NIBEPI_CONFIG_DIR=/etc/nibepi \
     NIBEPI_HEALTH_FILE=/dev/shm/nibepi-health.json \
     NIBEPI_UI_PORT=8080

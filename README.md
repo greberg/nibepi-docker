@@ -189,6 +189,7 @@ set in `docker-compose.yml`'s `environment:` section. They override
 | `NIBEPI_HEALTH_FILE` | `/dev/shm/nibepi-health.json` in the image |
 | `NIBEPI_UI_PORT` | status page port inside the container, `8080` in the image; empty turns it off |
 | `NIBEPI_UI_USER`, `NIBEPI_UI_PASS` | optional HTTP Basic auth for the status page: both or neither |
+| `NIBEPI_BUILD` | set by the image build (`<date>-<backend commit>`, e.g. `20261017-87eb233`); shown on the status page, in `gateway/state` and in Home Assistant. Leave it alone |
 
 Values are single-quoted in the file; inside the quotes write `'` as `''`
 and `$` as `$$` (compose would substitute a single `$`):
