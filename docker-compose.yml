@@ -46,6 +46,11 @@ services:
       # to Home Assistant as MQTT sensors on a 'Nibe <model>' device; the
       # NibePi integration does not need it.
       NIBEPI_MQTT_DISCOVERY: 'false'
+      # true: reset pump alarms in the first write slots after the gateway
+      # connects, like the original NibePi. Clears the MODBUS alarm (251) a
+      # gateway restart leaves on pumps that refuse a later reset; it also
+      # acknowledges any other alarm active at that moment.
+      NIBEPI_RESET_ALARM_ON_START: 'false'
       # serial (RS485 HAT, devices below) or nibegw.
       NIBEPI_CONNECTION: 'serial'
       # The serial port inside the container; devices below maps the host's.
