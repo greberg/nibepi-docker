@@ -179,6 +179,7 @@ set in `docker-compose.yml`'s `environment:` section. They override
 | `NIBEPI_MQTT_HOST`, `NIBEPI_MQTT_PORT` | broker, port default 1883; without a host MQTT is off |
 | `NIBEPI_MQTT_USER`, `NIBEPI_MQTT_PASS` | broker login |
 | `NIBEPI_MQTT_TOPIC` | topic prefix, default `nibe/modbus/` |
+| `NIBEPI_REGISTERS` | extra registers to poll and publish on `<topic><register>`, comma separated (e.g. `40015,40016,43416`), for your own MQTT sensors |
 | `NIBEPI_RESET_ALARM_ON_START` | `true` also resets pump alarms in the first write slots after connecting, like the original NibePi. Not needed: the gateway clears the MODBUS alarm (251) a restart leaves by itself (45171 written 0 then 1). It also acknowledges any other alarm active at that moment. Default `false` |
 | `NIBEPI_MQTT_DISCOVERY` | `true` also announces every polled register and the Bus errors sensor to Home Assistant as MQTT sensors on a "Nibe <model>" device; `false` (default) removes them. The NibePi integration does not need it |
 | `NIBEPI_CONNECTION` | `serial` or `nibegw` |
