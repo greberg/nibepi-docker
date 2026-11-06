@@ -97,8 +97,15 @@ services:
     # The healthcheck is built into the image: healthy once the pump has
     # answered in the last 10 minutes (docker ps shows it).
     # Docker's default json-file log never rotates and fills the SD card.
+    # non-blocking: the log file is on the SD card, and in the default
+    # (blocking) mode a hanging card stops Docker reading the gateway's
+    # output, the gateway then blocks on its next log line and stops
+    # answering the pump (alarm 251). Now lines go to a 4 MB buffer and are
+    # dropped if it fills; the status page keeps its own recent log.
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+        mode: non-blocking
+        max-buffer-size: "4m"
